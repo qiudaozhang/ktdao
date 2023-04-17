@@ -22,7 +22,7 @@ class BasicCrudTest {
     @Test
     fun queryIn() {
         val data = DbExecutor.query(
-            "select id ,name,icon,show_name,created,updated,deleted from resource where id in #{@loop(idList)} or show_name = #{showName}",
+            "select id ,name,icon,show_name,created,updated,deleted from resource where id in #{  @loop(idList)   } or show_name = #{   showName  }",
             mutableMapOf(
                 "idList" to listOf(391179018518598L, 391272015003717L),
                 "showName" to "大威天龙"
@@ -42,5 +42,14 @@ class BasicCrudTest {
             val matched = DbExecutor.updId(r, Resource::class.java)
             println(matched)
         }
+    }
+
+
+    @Test
+    fun sqlToToken(){
+
+        println(DbExecutor.sqlToToken(
+            "select id,    name,icon from user     where id in #{  @loop  (idList)   } or show_name = #{ showName }"
+        ))
     }
 }

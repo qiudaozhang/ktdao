@@ -70,25 +70,80 @@ object DbExecutor {
         return ps.executeUpdate()
     }
 
+    fun sqlToToken(sql:String):String{
+
+        val keyWords = listOf<String>(
+            "select", "from","where"
+        )
+        var s1 = sql.trim()
+        val ws1 = s1.split(" ")
+        val ws2 = ws1.filter { it != "" }
+        // select id,name from user where xxx = xxx
+        val words = mutableListOf<String>()
+        var tokenEnd = false
+        var preWord = ""
+        ws2.forEach {
+//            println("${it}===========")
+            if(tokenEnd){
+                preWord = ""
+            }
+            if(keyWords.contains(it) || keyWords.contains(it.uppercase())){
+                // 如果包含关键字 ，直接加入
+                words += it
+                tokenEnd = true
+            } else {
+                // 如果没有关键字，查看是否有#{}
+                if(tokenEnd){
+                    if(it.startsWith("#{")){
+                        if(it.endsWith("}")){
+                            //  如果有,移除所有的空格
+                            val v =  it.replace(" ","")
+                            words += v
+                            tokenEnd = true
+                        } else {
+                            tokenEnd = false
+                            preWord  = "${preWord}${it}"
+                        }
+
+                    } else {
+                        tokenEnd = true
+                        words += it
+                    }
+                } else {
+                    preWord = "${preWord}${it}"
+                    if(it.endsWith("}")){
+                        tokenEnd = true
+                        words += preWord
+                    }
+                }
+
+            }
+        }
+        return words.joinToString(" ")
+
+    }
+
+
 
     /**
      * SQL语句执行器构建
      *
      * @param T
-     * @param sql
+     * @param plainSql 原始的SQL语句
      * @param params
      * @param clz
      * @return
      */
     private fun buildPreparedStatement(
-        sql: String,
+        plainSql: String,
         params: MutableMap<String, Any?>
     ): PreparedStatement {
+
+        val sql = sqlToToken(plainSql)
         val words = sql.split(" ")
         val meanWords = words.filter { it != "" }
         val namedWords = meanWords.filter { it.startsWith("#") && it.endsWith("}") }
         val pos2param = mutableMapOf<Int, Any>()
-
         val finalParams = mutableListOf<Any?>()
 
         namedWords.forEachIndexed { index, s ->
@@ -123,55 +178,19 @@ object DbExecutor {
             }
         }
 
-//        val placedSqlWords = meanWords.map { w ->
-//            run {
-//                if (w.startsWith("#") && w.endsWith("}")) {
-//                    if(w.contains("@loop")){
-//                        // #{@loop(xxxx)}
-//                        val variableName = w.drop(6).dropLast(2)
-//                        val data = params[variableName]
-//                        if(data is List<*>){
-//                            // 参数放进去
-//                            data.forEach {
-//                                finalParams +=  it
-//                            }
-//                            loopSql(data)
-//                        } else {
-//                            throw RuntimeException("param can't loop")
-//                        }
-//
-//                    } else {
-//                        finalParams +=
-//                        "?"
-//                    }
-//
-//                } else {
-//                    w
-//                }
-//            }
-//        }
+
         val placedSql = placedSqlWords.joinToString(" ")
         val ps = connection!!.prepareStatement(placedSql)
         if (showSql) {
             logger.info(placedSql)
         }
-//        finalParams.forEach {
-//            ps.setObject()
-//        }
         finalParams.forEachIndexed { index, v ->
             run {
 
             }
             ps.setObject(index + 1, v)
         }
-//        pos2param.forEach {
-//            val k = it.key
-//            val v = params[it.value]
-//            ps.setObject(k, v)
-//            if (showSql) {
-//                logger.info(v.toString())
-//            }
-//        }
+
         return ps
     }
 
