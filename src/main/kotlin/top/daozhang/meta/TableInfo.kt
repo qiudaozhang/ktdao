@@ -7,11 +7,11 @@ class TableInfo : Serializable {
 
     var id: String? = null
     var tableName: String? = null
-    var simpleClassName:String?=null
-    var fullClassName:String?=null
+    var simpleClassName: String? = null
+    var fullClassName: String? = null
     var columns: List<String>? = null
     var fc: MutableList<ColumnInfo>? = null
-    var clz:Class<*>?=null
+    var clz: Class<*>? = null
 
 
     fun allColSql(): String {
@@ -34,41 +34,31 @@ class TableInfo : Serializable {
         return "select ${allColSql()} from $tableName where ${this.id} = ${id}"
     }
 
-    fun selectByIdSql():String{
+    fun selectByIdSql(): String {
         return "select ${allColSql()} from $tableName where ${this.id} = #{id}"
     }
 
-    fun updateIdSql(v: Any): String {
-        var updatePart = ""
-        fc!!.forEach { f ->
-            run {
-                val field = f.fieldName
-                val colName = f.columnName
-                if (colName != this.id) { // 不更新主键
-                    updatePart += "$colName = #{${field}},"
-                }
-            }
-        }
-        updatePart = updatePart.dropLast(1)
-        val sql = "update $tableName set  $updatePart where ${this.id} = #{${this.id}}"
-        return sql
+    fun deleteByIdSql(): String {
+        return "delete from $tableName where ${this.id} = #{id}"
     }
 
-    fun updateIdSqlV2(v: Any): String {
+
+
+
+
+    fun updateIdSql(): String {
         var updatePart = ""
-        val clz = v.javaClass
         fc!!.forEach { f ->
             run {
                 val field = f.fieldName
                 val colName = f.columnName
                 if (colName != this.id) { // 不更新主键
-                    updatePart += "$colName = #{${field}},"
+                    updatePart += " $colName = #{${field}} , "
                 }
             }
         }
-        updatePart = updatePart.dropLast(1)
-        val sql = "update $tableName set  $updatePart where ${this.id} = #{${this.id}}"
-        return sql
+        updatePart = updatePart.take(updatePart.lastIndexOf(",") - 1)
+        return "update $tableName set  $updatePart where $id = #{$id}"
     }
 
     override fun toString(): String {

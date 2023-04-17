@@ -1,11 +1,10 @@
 package top.daozhang.parse
 
-import cn.hutool.log.Log
 import cn.hutool.log.dialect.console.ConsoleLog
-import top.daozhang.meta.TableInfo
-import top.daozhang.model.Resource
+import top.daozhang.tool.ClassTool
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.PreparedStatement
 
 
 object DbExecutor {
@@ -14,143 +13,10 @@ object DbExecutor {
     val logger = ConsoleLog(DbExecutor::class.java)
     var showSql = false
 
-    init {
-        val host = "localhost"
-        val port = 3354
-        val username = "root"
-        val password = "root"
-        val dbName = "cloud3"
-        Class.forName("com.mysql.cj.jdbc.Driver")
+
+    fun init(host: String, port: Int, username: String, password: String, dbName: String?, driverClass: String) {
+        Class.forName(driverClass)
         connection = DriverManager.getConnection("jdbc:mysql://${host}:${port}/${dbName}", username, password)
-        println("初始化")
-    }
-
-    fun execute(sql: String) {
-    }
-
-    /**
-     * 简单的转换具名参数的封装查询
-     *
-     * @param sql
-     * @param params
-     */
-    fun executeQuery(sql: String, params: MutableMap<String, Any>) {
-//        val pst = connection!!.prepareStatement(sql)
-        /*
-        假设有要给sql
-        ① update user set name = ? where name = ? or username = ?
-        ② update user set name = #{newName} where name = #{oldName} or username = #{oldName}
-        这种情况下oldName可以复用，需要解决几个问题
-        2 需要最终替换为1 ，且能够根据这个关系找到对应的数据
-        所以可以构建一个三者关系
-        位置=》具名参数的名称=》具体的值，并且还有
-         */
-        val words = sql.split(" ")
-        val meanWords = words.filter { it != "" }
-        val namedWords = meanWords.filter { it.startsWith("#") && it.endsWith("}") }
-        val pos2param = mutableMapOf<Int, Any>()
-        namedWords.forEachIndexed { index, s ->
-            pos2param[index + 1] = s.drop(2).dropLast(1)
-        }
-        val placedSqlWords = meanWords.map { w ->
-            run {
-                if (w.startsWith("#") && w.endsWith("}")) {
-                    "?"
-                } else {
-                    w
-                }
-            }
-        }
-        val placedSql = placedSqlWords.joinToString(" ")
-        val ps = connection!!.prepareStatement(placedSql)
-
-
-        if (!placedSql.startsWith("select", ignoreCase = true)) {
-            throw RuntimeException("Illegal query SQL statement")
-        }
-
-
-        pos2param.forEach {
-            val k = it.key
-            val v = params[it.value]
-            ps.setObject(k, v)
-        }
-        val rs = ps.executeQuery()
-        val rsMeta = rs.metaData
-        val selectColumnCount = rsMeta.columnCount
-        while (rs.next()) {
-            for (i in 1..selectColumnCount) {
-                print("${rs.getObject(i)}\t")
-            }
-        }
-    }
-
-
-    /**
-     * 传入table info 并且封装对应的数据返回
-     * 对外暴露TableInfo用法应该限定在内部
-     *
-     * @param sql
-     * @param params
-     * @param tableInfo
-     */
-    fun executeQueryV2(sql: String, params: MutableMap<String, Any>, tableInfo: TableInfo) {
-        val words = sql.split(" ")
-        val meanWords = words.filter { it != "" }
-        val namedWords = meanWords.filter { it.startsWith("#") && it.endsWith("}") }
-        val pos2param = mutableMapOf<Int, Any>()
-        namedWords.forEachIndexed { index, s ->
-            pos2param[index + 1] = s.drop(2).dropLast(1)
-        }
-        val placedSqlWords = meanWords.map { w ->
-            run {
-                if (w.startsWith("#") && w.endsWith("}")) {
-                    "?"
-                } else {
-                    w
-                }
-            }
-        }
-        val placedSql = placedSqlWords.joinToString(" ")
-        val ps = connection!!.prepareStatement(placedSql)
-
-
-        if (!placedSql.startsWith("select", ignoreCase = true)) {
-            throw RuntimeException("Illegal query SQL statement")
-        }
-
-        pos2param.forEach {
-            val k = it.key
-            val v = params[it.value]
-            ps.setObject(k, v)
-        }
-        val rs = ps.executeQuery()
-        val rsMeta = rs.metaData
-        val selectColumnCount = rsMeta.columnCount
-        val clz = tableInfo.clz!!
-
-        val result = mutableListOf<Any>()
-        while (rs.next()) {
-
-            val ins = clz.getDeclaredConstructor().newInstance()
-            val fields = clz.declaredFields
-
-            for (i in 1..selectColumnCount) {
-                val columnName = rsMeta.getColumnLabel(i)
-                val fieldOp = tableInfo.fc!!.find { it.columnName == columnName }
-                fieldOp?.let {
-                    val fieldName = fieldOp.fieldName
-                    val f = fields.find { it.name == fieldName }
-                    f?.let {
-                        f.trySetAccessible()
-                        f.set(ins, rs.getObject(columnName))
-                    }
-                }
-            }
-            result += ins
-        }
-
-        result.forEach { println(it) }
     }
 
 
@@ -162,9 +28,12 @@ object DbExecutor {
      * @param clz
      * @return
      */
-    fun <T> getId(id: Any, clz: Class<T>): T? {
+    fun <T> getId(id: Any?, clz: Class<T>): T? {
+        if (id == null) {
+            return null
+        }
         val sql = ParseTable.metaMap[clz.name]!!.selectByIdSql()
-        val data = executeQueryV3(
+        val data = query(
             sql, mutableMapOf(
                 "id" to id
             ), clz
@@ -176,6 +45,140 @@ object DbExecutor {
         }
     }
 
+    fun <T> delId(id: Any?, clz: Class<T>): Int {
+        if (id == null) {
+            return 0
+        }
+        val sql = ParseTable.metaMap[clz.name]!!.deleteByIdSql()
+        val ps = buildPreparedStatement(
+            sql,
+            mutableMapOf(
+                "id" to id
+            )
+        )
+        return ps.executeUpdate()
+    }
+
+    fun <T> updId(v: T, clz: Class<T>): Int {
+        if (v == null) {
+            return 0
+        }
+
+        val sql = ParseTable.metaMap[clz.name]!!.updateIdSql()
+        val map = ClassTool.toMap(v)
+        val ps = buildPreparedStatement(sql, map.toMutableMap())
+        return ps.executeUpdate()
+    }
+
+
+    /**
+     * SQL语句执行器构建
+     *
+     * @param T
+     * @param sql
+     * @param params
+     * @param clz
+     * @return
+     */
+    private fun buildPreparedStatement(
+        sql: String,
+        params: MutableMap<String, Any?>
+    ): PreparedStatement {
+        val words = sql.split(" ")
+        val meanWords = words.filter { it != "" }
+        val namedWords = meanWords.filter { it.startsWith("#") && it.endsWith("}") }
+        val pos2param = mutableMapOf<Int, Any>()
+
+        val finalParams = mutableListOf<Any?>()
+
+        namedWords.forEachIndexed { index, s ->
+            pos2param[index + 1] = s.drop(2).dropLast(1)
+        }
+        val placedSqlWords = meanWords.map { w ->
+            run {
+                if (w.startsWith("#") && w.endsWith("}")) {
+                    if (w.contains("@loop")) {
+                        // #{@loop(xxxx)}
+                        val variableName = w.drop(8).dropLast(2)
+                        val data = params[variableName]
+                        if (data is List<*>) {
+                            // 参数放进去
+                            data.forEach {
+                                finalParams += it
+                            }
+                            loopSql(data)
+                        } else {
+                            throw RuntimeException("param can't loop")
+                        }
+
+                    } else {
+                        val variableName = w.drop(2).dropLast(1)
+                        finalParams += params[variableName]
+                            "?"
+                    }
+
+                } else {
+                    w
+                }
+            }
+        }
+
+//        val placedSqlWords = meanWords.map { w ->
+//            run {
+//                if (w.startsWith("#") && w.endsWith("}")) {
+//                    if(w.contains("@loop")){
+//                        // #{@loop(xxxx)}
+//                        val variableName = w.drop(6).dropLast(2)
+//                        val data = params[variableName]
+//                        if(data is List<*>){
+//                            // 参数放进去
+//                            data.forEach {
+//                                finalParams +=  it
+//                            }
+//                            loopSql(data)
+//                        } else {
+//                            throw RuntimeException("param can't loop")
+//                        }
+//
+//                    } else {
+//                        finalParams +=
+//                        "?"
+//                    }
+//
+//                } else {
+//                    w
+//                }
+//            }
+//        }
+        val placedSql = placedSqlWords.joinToString(" ")
+        val ps = connection!!.prepareStatement(placedSql)
+        if (showSql) {
+            logger.info(placedSql)
+        }
+//        finalParams.forEach {
+//            ps.setObject()
+//        }
+        finalParams.forEachIndexed { index, v ->
+            run {
+
+            }
+            ps.setObject(index + 1, v)
+        }
+//        pos2param.forEach {
+//            val k = it.key
+//            val v = params[it.value]
+//            ps.setObject(k, v)
+//            if (showSql) {
+//                logger.info(v.toString())
+//            }
+//        }
+        return ps
+    }
+
+    fun <T> exe(sql: String, params: MutableMap<String, Any>, clz: Class<T>): Long {
+        return 0L
+    }
+
     /**
      * 查询器
      *
@@ -185,39 +188,8 @@ object DbExecutor {
      * @param clz
      * @return
      */
-    fun <T> executeQueryV3(sql: String, params: MutableMap<String, Any>, clz: Class<T>): MutableList<T> {
-        val words = sql.split(" ")
-        val meanWords = words.filter { it != "" }
-        val namedWords = meanWords.filter { it.startsWith("#") && it.endsWith("}") }
-        val pos2param = mutableMapOf<Int, Any>()
-        namedWords.forEachIndexed { index, s ->
-            pos2param[index + 1] = s.drop(2).dropLast(1)
-        }
-        val placedSqlWords = meanWords.map { w ->
-            run {
-                if (w.startsWith("#") && w.endsWith("}")) {
-                    "?"
-                } else {
-                    w
-                }
-            }
-        }
-        val placedSql = placedSqlWords.joinToString(" ")
-        val ps = connection!!.prepareStatement(placedSql)
-        if (!placedSql.startsWith("select", ignoreCase = true)) {
-            throw RuntimeException("Illegal query SQL statement")
-        }
-        if (showSql) {
-            logger.info(placedSql)
-        }
-        pos2param.forEach {
-            val k = it.key
-            val v = params[it.value]
-            ps.setObject(k, v)
-            if (showSql) {
-                logger.info(v.toString())
-            }
-        }
+    fun <T> query(sql: String, params: MutableMap<String, Any?>, clz: Class<T>): MutableList<T> {
+        val ps = buildPreparedStatement(sql, params)
         val rs = ps.executeQuery()
         val rsMeta = rs.metaData
         val selectColumnCount = rsMeta.columnCount
@@ -246,34 +218,14 @@ object DbExecutor {
         return result
     }
 
-    @JvmStatic
-    fun main(args: Array<String>) {
-        ParseTable.parsePackage("top.daozhang.model")
-//        ParseTable.parseClass(Resource::class.java)
-//        executeQueryV3(
-//            "select id,icon,`type`,name,show_name,created,updated,deleted from `resource` where icon = #{icon}",
-//            mutableMapOf(
-//                "icon" to "account2",
-//            ),
-//            Resource::class.java
-//        )
 
-//        executeQueryV3(
-//            "select id,icon,`type`,name,show_name,created,updated,deleted from `resource` where icon = #{icon} or name = #{icon} ",
-//            mutableMapOf(
-//                "icon" to "account",
-//            ),
-//            Resource::class.java
-//        )
+    fun loopSql(data: List<*>): String {
 
-        showSql = true
-        val r = getId(391272090009669L, Resource::class.java)
-        println(r)
+        // 第一个这段sql 需要重构
+        val s1 = data.map { "?" }
+        val s2 = s1.joinToString(",")
+        val s3 = "(${s2})"
+        return s3
 
-//        executeQuery("update user set name = #{newName} where name = #{oldName} or username = #{oldName}" , mutableMapOf(
-//                    "newName" to "有意思",
-//                    "oldName" to "没意思"
-//                )
-//        )
     }
 }

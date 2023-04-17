@@ -79,17 +79,6 @@ object ParseTable {
     }
 
 
-    //    fun getClass(className:String,packageName:String):Class<*>?{
-//        try {
-//            return Class.forName(
-//                packageName + "."
-//                        + className.substring(0, className.lastIndexOf('.'))
-//            )
-//        } catch (e: ClassNotFoundException) {
-//            // handle the exception
-//            return null
-//        }
-//    }
     fun parsePackage(packageName: String) {
         val sp = ClassUtil.scanPackage(packageName)
         sp.forEach {
@@ -97,10 +86,5 @@ object ParseTable {
         }
     }
 
-    @JvmStatic
-    fun main(args: Array<String>) {
 
-        parsePackage("top.daozhang.model")
-
-    }
 }
