@@ -7,10 +7,11 @@ class TableInfo : Serializable {
 
     var id: String? = null
     var tableName: String? = null
+    var simpleClassName:String?=null
+    var fullClassName:String?=null
     var columns: List<String>? = null
-    // 字段到column的名称的一个映射关系
-//    var fc: MutableList<Pair<String, String>>? = null
     var fc: MutableList<ColumnInfo>? = null
+    var clz:Class<*>?=null
 
 
     fun allColSql(): String {
@@ -33,6 +34,10 @@ class TableInfo : Serializable {
         return "select ${allColSql()} from $tableName where ${this.id} = ${id}"
     }
 
+    fun selectByIdSql():String{
+        return "select ${allColSql()} from $tableName where ${this.id} = #{id}"
+    }
+
     fun updateIdSql(v: Any): String {
         var updatePart = ""
         fc!!.forEach { f ->
@@ -47,6 +52,27 @@ class TableInfo : Serializable {
         updatePart = updatePart.dropLast(1)
         val sql = "update $tableName set  $updatePart where ${this.id} = #{${this.id}}"
         return sql
+    }
+
+    fun updateIdSqlV2(v: Any): String {
+        var updatePart = ""
+        val clz = v.javaClass
+        fc!!.forEach { f ->
+            run {
+                val field = f.fieldName
+                val colName = f.columnName
+                if (colName != this.id) { // 不更新主键
+                    updatePart += "$colName = #{${field}},"
+                }
+            }
+        }
+        updatePart = updatePart.dropLast(1)
+        val sql = "update $tableName set  $updatePart where ${this.id} = #{${this.id}}"
+        return sql
+    }
+
+    override fun toString(): String {
+        return "TableInfo(id=$id, tableName=$tableName, columns=$columns, fc=$fc)"
     }
 
 

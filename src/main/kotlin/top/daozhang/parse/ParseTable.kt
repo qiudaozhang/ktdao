@@ -1,21 +1,25 @@
 package top.daozhang.parse
 
+import cn.hutool.core.util.ClassUtil
 import top.daozhang.annotation.Col
 import top.daozhang.annotation.Id
 import top.daozhang.annotation.Table
 import top.daozhang.meta.ColumnInfo
 import top.daozhang.meta.TableInfo
-import top.daozhang.model.User
 import top.daozhang.tool.StrTool
 import java.util.concurrent.ConcurrentHashMap
+
 
 object ParseTable {
 
     val metaMap = ConcurrentHashMap<String, TableInfo>()
 
-    fun parseClass(clz:Class<*>){
+    fun parseClass(clz: Class<*>) {
         val annos = clz.declaredAnnotations
         val tableInfo = TableInfo()
+        tableInfo.clz = clz
+        tableInfo.simpleClassName = clz.simpleName
+        tableInfo.fullClassName = clz.name
         annos.forEach {
             when (it) {
                 is Table -> {
@@ -27,6 +31,7 @@ object ParseTable {
                     }
                     tableInfo.tableName = tableName
                 }
+
                 else -> {
                 }
             }
@@ -53,6 +58,7 @@ object ParseTable {
                                 columnInfo.columnName = colName
                                 fc += columnInfo
                             }
+
                             is Id -> {
                                 idField = field.name
                             }
@@ -65,15 +71,36 @@ object ParseTable {
         tableInfo.columns = columns
         tableInfo.fc = fc
         tableInfo.id = fc.find { it.fieldName == idField }!!.columnName
-        metaMap[tableInfo.tableName!!] = tableInfo
+//        metaMap[tableInfo.tableName!!] = tableInfo
+        // 使用
+//        metaMap[tableInfo.simpleClassName!!] = tableInfo
+        metaMap[tableInfo.fullClassName!!] = tableInfo
+
+    }
+
+
+    //    fun getClass(className:String,packageName:String):Class<*>?{
+//        try {
+//            return Class.forName(
+//                packageName + "."
+//                        + className.substring(0, className.lastIndexOf('.'))
+//            )
+//        } catch (e: ClassNotFoundException) {
+//            // handle the exception
+//            return null
+//        }
+//    }
+    fun parsePackage(packageName: String) {
+        val sp = ClassUtil.scanPackage(packageName)
+        sp.forEach {
+            parseClass(it)
+        }
     }
 
     @JvmStatic
     fun main(args: Array<String>) {
-        parseClass(User::class.java)
-        metaMap.forEach{
-            println(it.value.updateIdSql(23))
-        }
-//        println(tableInfo.updateIdSql(23))
+
+        parsePackage("top.daozhang.model")
+
     }
 }

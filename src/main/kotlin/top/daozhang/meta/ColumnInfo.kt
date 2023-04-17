@@ -10,8 +10,16 @@ class ColumnInfo :Serializable{
     // 列名称
     var columnName:String?=null
 
+
+
+
+
     companion object {
         @Serial
         private const val serialVersionUID: Long = 5860251200509005209L
+    }
+
+    override fun toString(): String {
+        return "ColumnInfo(fieldName=$fieldName, columnName=$columnName)"
     }
 }
