@@ -1,6 +1,9 @@
 package top.daozhang.parse
 
+import cn.hutool.core.util.ClassUtil
+import cn.hutool.core.util.ReflectUtil
 import cn.hutool.log.dialect.console.ConsoleLog
+import top.daozhang.meta.ResultMap
 import top.daozhang.tool.ClassTool
 import java.sql.Connection
 import java.sql.DriverManager
@@ -70,10 +73,10 @@ object DbExecutor {
         return ps.executeUpdate()
     }
 
-    fun sqlToToken(sql:String):String{
+    fun sqlToToken(sql: String): String {
 
         val keyWords = listOf<String>(
-            "select", "from","where"
+            "select", "from", "where"
         )
         var s1 = sql.trim()
         val ws1 = s1.split(" ")
@@ -83,26 +86,25 @@ object DbExecutor {
         var tokenEnd = false
         var preWord = ""
         ws2.forEach {
-//            println("${it}===========")
-            if(tokenEnd){
+            if (tokenEnd) {
                 preWord = ""
             }
-            if(keyWords.contains(it) || keyWords.contains(it.uppercase())){
+            if (keyWords.contains(it) || keyWords.contains(it.uppercase())) {
                 // 如果包含关键字 ，直接加入
                 words += it
                 tokenEnd = true
             } else {
                 // 如果没有关键字，查看是否有#{}
-                if(tokenEnd){
-                    if(it.startsWith("#{")){
-                        if(it.endsWith("}")){
+                if (tokenEnd) {
+                    if (it.startsWith("#{")) {
+                        if (it.endsWith("}")) {
                             //  如果有,移除所有的空格
-                            val v =  it.replace(" ","")
+                            val v = it.replace(" ", "")
                             words += v
                             tokenEnd = true
                         } else {
                             tokenEnd = false
-                            preWord  = "${preWord}${it}"
+                            preWord = "${preWord}${it}"
                         }
 
                     } else {
@@ -111,7 +113,7 @@ object DbExecutor {
                     }
                 } else {
                     preWord = "${preWord}${it}"
-                    if(it.endsWith("}")){
+                    if (it.endsWith("}")) {
                         tokenEnd = true
                         words += preWord
                     }
@@ -122,7 +124,6 @@ object DbExecutor {
         return words.joinToString(" ")
 
     }
-
 
 
     /**
@@ -169,7 +170,7 @@ object DbExecutor {
                     } else {
                         val variableName = w.drop(2).dropLast(1)
                         finalParams += params[variableName]
-                            "?"
+                        "?"
                     }
 
                 } else {
@@ -213,7 +214,7 @@ object DbExecutor {
         val rsMeta = rs.metaData
         val selectColumnCount = rsMeta.columnCount
         if (!ParseTable.metaMap.keys.contains(clz.name)) {
-            throw RuntimeException("not found class table info")
+            ParseTable.parseClass(clz)
         }
         val tableInfo = ParseTable.metaMap[clz.name]!!
         val result = mutableListOf<T>()
@@ -222,13 +223,24 @@ object DbExecutor {
             val fields = clz.declaredFields
             for (i in 1..selectColumnCount) {
                 val columnName = rsMeta.getColumnLabel(i)
-                val fieldOp = tableInfo.fc!!.find { it.columnName == columnName }
+                var fieldOp = tableInfo.fc!!.find { it.columnName == columnName }
+                if (fieldOp == null) {
+                    fieldOp = tableInfo.fc!!.find { it.fieldName == columnName }
+                }
                 fieldOp?.let {
                     val fieldName = fieldOp.fieldName
                     val f = fields.find { it.name == fieldName }
                     f?.let {
                         f.trySetAccessible()
-                        f.set(ins, rs.getObject(columnName))
+                        when (f.type) {
+                            String::class.java -> {
+                                f.set(ins, rs.getObject(columnName).toString())
+                            }
+
+                            else -> {
+                                f.set(ins, rs.getObject(columnName))
+                            }
+                        }
                     }
                 }
             }
@@ -237,14 +249,104 @@ object DbExecutor {
         return result
     }
 
+    fun query(sql: String, params: MutableMap<String, Any?>, resultMap: ResultMap) {
+        val ps = buildPreparedStatement(sql, params)
+        val rs = ps.executeQuery()
+        val rsMeta = rs.metaData
+        val selectColumnCount = rsMeta.columnCount
+        val clz = resultMap.type!!
+        if (!ParseTable.metaMap.keys.contains(clz.name)) {
+            ParseTable.parseClass(clz)
+        }
+        val result = mutableListOf<MutableMap<String, Any>>()
+        while (rs.next()) {
+            val row = mutableMapOf<String, Any>()
+            for (i in 1..selectColumnCount) {
+                val columnName = rsMeta.getColumnLabel(i)
+                row[columnName] = rs.getObject(columnName)
+            }
+            result += row
+        }
+        val cols = resultMap.cols
+        // 找出简单的列数据进行封装处理
+        val simpleCols = cols!!.filter { it.simple!! }
+        var insList: List<Any?> = mutableListOf()
+        val fields = ReflectUtil.getFields(clz)
+        val ids = mutableListOf<Any>()
+        result.forEach { r ->
+            run {
+                val ins = clz.getDeclaredConstructor().newInstance()
+                var next = true
+                simpleCols.forEach { sc ->
+                    run {
+                        val columnValue = r[sc.column!!]
+                        if (sc.id!!) {
+                            if (ids.contains(columnValue)) {
+                                next = false
+                            } else {
+                                if (columnValue != null) {
+                                    ids += columnValue
+                                }
+                            }
+                        }
+                        if (next) {
+                            val targetField = fields.find { it.name == sc.field }
+                            targetField?.let {
+                                targetField.trySetAccessible()
+                                when (targetField.type) {
+                                    String::class.java -> {
+                                        targetField.set(ins, columnValue.toString())
+                                    }
+
+                                    else -> {
+                                        targetField.set(ins, columnValue)
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                }
+                if (next) {
+                    insList += ins
+
+
+                }
+            }
+        }
+
+
+        val nonSimpleCols = cols.filter { !it.simple!! }
+
+        if (nonSimpleCols.isNotEmpty()) {
+            // 有非简单数据类型
+
+            nonSimpleCols.forEach { sc ->
+                run {
+
+                    val innerCols = sc.fields
+                    result.forEach { r ->
+                        run {
+
+
+                        }
+                    }
+
+                }
+            }
+
+        }
+
+
+
+        println(insList)
+    }
+
 
     fun loopSql(data: List<*>): String {
-
         // 第一个这段sql 需要重构
         val s1 = data.map { "?" }
         val s2 = s1.joinToString(",")
-        val s3 = "(${s2})"
-        return s3
-
+        return "(${s2})"
     }
 }

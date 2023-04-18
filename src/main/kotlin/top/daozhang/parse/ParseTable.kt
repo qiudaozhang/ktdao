@@ -25,13 +25,12 @@ object ParseTable {
                 is Table -> {
                     val tableName = if (it.name == "") {
                         // 获取类的简易名称
-                        StrTool.camelIt(clz.simpleName)
+                        StrTool.underScoreIt(clz.simpleName)
                     } else {
                         it.name
                     }
                     tableInfo.tableName = tableName
                 }
-
                 else -> {
                 }
             }
@@ -48,7 +47,7 @@ object ParseTable {
                         when (anno) {
                             is Col -> {
                                 val colName = if (anno.name == "") {
-                                    StrTool.camelIt(field.name)
+                                    StrTool.underScoreIt(field.name)
                                 } else {
                                     anno.name
                                 }
@@ -58,7 +57,6 @@ object ParseTable {
                                 columnInfo.columnName = colName
                                 fc += columnInfo
                             }
-
                             is Id -> {
                                 idField = field.name
                             }
@@ -68,14 +66,26 @@ object ParseTable {
                 }
             }
         }
+
+        if(tableInfo.tableName == null){
+            // 不是某个表的信息，直接解析所有字段即可
+            fields.forEach { field ->
+                run {
+                    val columnInfo = ColumnInfo()
+                    columnInfo.fieldName = field.name
+                    columnInfo.columnName = StrTool.underScoreIt(columnInfo.fieldName!!)
+                    fc += columnInfo
+                }
+            }
+        }
+
         tableInfo.columns = columns
         tableInfo.fc = fc
-        tableInfo.id = fc.find { it.fieldName == idField }!!.columnName
-//        metaMap[tableInfo.tableName!!] = tableInfo
-        // 使用
-//        metaMap[tableInfo.simpleClassName!!] = tableInfo
+        val fid = fc.find { it.fieldName == idField }
+        fid?.let {
+            tableInfo.id = fid.columnName
+        }
         metaMap[tableInfo.fullClassName!!] = tableInfo
-
     }
 
 
@@ -85,6 +95,4 @@ object ParseTable {
             parseClass(it)
         }
     }
-
-
 }

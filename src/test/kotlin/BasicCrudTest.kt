@@ -1,5 +1,6 @@
 import org.junit.Before
 import org.junit.Test
+import top.daozhang.dto.ResourceDto
 import top.daozhang.model.Resource
 import top.daozhang.parse.DbExecutor
 import top.daozhang.parse.ParseTable
@@ -40,7 +41,6 @@ class BasicCrudTest {
         r?.let {
             r.name = "月光星子"
             val matched = DbExecutor.updId(r, Resource::class.java)
-            println(matched)
         }
     }
 
@@ -51,5 +51,34 @@ class BasicCrudTest {
         println(DbExecutor.sqlToToken(
             "select id,    name,icon from user     where id in #{  @loop  (idList)   } or show_name = #{ showName }"
         ))
+    }
+
+
+    @Test
+    fun customResultTest() {
+        val data = DbExecutor.query(
+            "select id, concat(name,show_name) as full_name , level  from resource where id = #{id }",
+            mutableMapOf(
+                "id" to 391179018518598
+            ),
+            ResourceDto::class.java
+        )
+        data.forEach { println(it) }
+    }
+    @Test
+    fun customResultTest2() {
+        val start = System.currentTimeMillis()
+        for ( i in 1 .. 1000){
+            val data = DbExecutor.query(
+                "select id, concat(name,show_name) as full_name , level  from resource where id = #{id }",
+                mutableMapOf(
+                    "id" to 391179018518598
+                ),
+                ResourceDto::class.java
+            )
+        }
+
+        val end = System.currentTimeMillis()
+        println((end-start))
     }
 }

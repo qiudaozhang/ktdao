@@ -44,7 +44,7 @@ object StrTool {
     }
 
 
-    fun camelIt(s: String): String {
+    fun underScoreIt(s: String): String {
         val indexes = bigIndex(s)
         if (indexes.isEmpty()) {
             return s
@@ -52,13 +52,25 @@ object StrTool {
             val words = splitWithIndex(s, indexes)
             return words.map { it.lowercase() }.reduce { a, b -> "${a}_${b}" }
         }
-
     }
+
+
+    fun camelIt(s: String): String {
+        val words = s.split("_")
+        val w2 = words.map { w ->
+            run {
+                w.replaceFirstChar { a -> a.uppercase() }
+            }
+        }
+        return w2.joinToString("").replaceFirstChar { a -> a.lowercase() }
+    }
+
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val r = camelIt("GoodStudy2BigTable")
-        println(r)
+//        val r = underScoreIt("GoodStudy2BigTable")
+//        println(r)
+        println(camelIt("love_is_good"))
 //        println(bigIndex("GoodStudy"))
 //        println(splitWithIndex("GoodStudy"))
     }
