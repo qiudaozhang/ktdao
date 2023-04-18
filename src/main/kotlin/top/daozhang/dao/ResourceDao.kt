@@ -35,7 +35,9 @@ object ResourceDao {
 
 //        DbExecutor.query()
         val sql = """
-            select r.id,  concat(r.name,r.show_name) as full_name ,r.level, rd.id as detail_id, rd.resource_id, rd.name as detail_name  from resource r left join resource_detail rd  on r.id = rd.resource_id where r.id = #{id} 
+            select r.id,  concat(r.name,r.show_name) as full_name ,r.level, rd.id as detail_id,
+             rd.resource_id, rd.name as detail_name  from resource r left join resource_detail rd  
+             on r.id = rd.resource_id where r.id = #{id} 
         """.trimIndent()
        val data = DbExecutor.query(sql,
             mutableMapOf(

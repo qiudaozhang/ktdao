@@ -273,17 +273,11 @@ object DbExecutor {
             result += row
         }
 
-        var insList: List<Any?> = mutableListOf()
+        var insList = mutableListOf<Any>()
         val fields = ReflectUtil.getFields(clz)
-        val ids = mutableListOf<Any>()
-        val uniqueColName = simpleCols.find { it.id!! }
-
         val data = result.groupBy { it[pk!!.column] }
-        println(data)
-
         data.forEach { d ->
             run {
-                val id = d.key
                 val value = d.value
                 val row = value[0]
                 val ins = clz.getDeclaredConstructor().newInstance()
@@ -307,10 +301,8 @@ object DbExecutor {
                     }
                 }
                 insList += ins
-
                 if (nonSimpleCols.isNotEmpty()) {
                     // 非空才需要处理
-
                     nonSimpleCols.forEach { sc ->
                         run {
                             val cols2 = sc.fields
@@ -329,9 +321,11 @@ object DbExecutor {
                                                     String::class.java -> {
                                                         targetField2.set(ins2, targetValue.toString())
                                                     }
-                                                    Long::class.java->{
-                                                        targetField2.set(ins2,targetValue.toString().toLong())
+
+                                                    Long::class.java -> {
+                                                        targetField2.set(ins2, targetValue.toString().toLong())
                                                     }
+
                                                     else -> {
                                                         targetField2.set(ins2, targetValue)
                                                     }
@@ -343,14 +337,16 @@ object DbExecutor {
                                     nsInsList += ins2
                                 }
                             }
-                            val  nonSimpleField =  fields.find { it.name == sc.column }
+                            val nonSimpleField = fields.find { it.name == sc.column }
                             nonSimpleField!!.trySetAccessible()
-                            nonSimpleField.set(ins,nsInsList)
+                            nonSimpleField.set(ins, nsInsList)
                         }
                     }
                 }
             }
         }
+
+        println(insList)
     }
 
 

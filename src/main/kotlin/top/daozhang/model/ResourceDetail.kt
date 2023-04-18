@@ -15,8 +15,14 @@ class ResourceDetail:Serializable {
     @Col
     var name:String?=null
 
+
+
     companion object {
         @Serial
         private const val serialVersionUID: Long = -2908861150946397139L
+    }
+
+    override fun toString(): String {
+        return "ResourceDetail(id=$id, resourceId=$resourceId, name=$name)"
     }
 }

@@ -1,6 +1,5 @@
 package top.daozhang.dto
 
-import top.daozhang.annotation.Col
 import java.io.Serial
 import java.io.Serializable
 
