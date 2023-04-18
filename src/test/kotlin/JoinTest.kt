@@ -26,4 +26,28 @@ class JoinTest {
     }
 
 
+    @Test
+    fun groupByTest() {
+
+       val map = mutableListOf<MutableMap<String,Any>>(
+
+            mutableMapOf(
+                "id" to 1 ,
+                "name" to "good"
+            ),
+            mutableMapOf(
+                "id" to 1 ,
+                "name" to "study"
+            ),
+            mutableMapOf(
+                "id" to 2 ,
+                "name" to "day day up"
+            )
+        )
+
+        val data = map.groupBy { it["id"] }
+        println(data)
+    }
+
+
 }

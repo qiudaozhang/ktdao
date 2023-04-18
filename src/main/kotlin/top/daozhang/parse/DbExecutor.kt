@@ -1,6 +1,5 @@
 package top.daozhang.parse
 
-import cn.hutool.core.util.ClassUtil
 import cn.hutool.core.util.ReflectUtil
 import cn.hutool.log.dialect.console.ConsoleLog
 import top.daozhang.meta.ResultMap
@@ -259,6 +258,12 @@ object DbExecutor {
             ParseTable.parseClass(clz)
         }
         val result = mutableListOf<MutableMap<String, Any>>()
+        val cols = resultMap.cols
+        // 找出简单的列数据进行封装处理
+        val simpleCols = cols!!.filter { it.simple!! }
+        val nonSimpleCols = cols.filter { !it.simple!! }
+        val pk = simpleCols.find { it.id!! }
+
         while (rs.next()) {
             val row = mutableMapOf<String, Any>()
             for (i in 1..selectColumnCount) {
@@ -267,79 +272,85 @@ object DbExecutor {
             }
             result += row
         }
-        val cols = resultMap.cols
-        // 找出简单的列数据进行封装处理
-        val simpleCols = cols!!.filter { it.simple!! }
+
         var insList: List<Any?> = mutableListOf()
         val fields = ReflectUtil.getFields(clz)
         val ids = mutableListOf<Any>()
-        result.forEach { r ->
+        val uniqueColName = simpleCols.find { it.id!! }
+
+        val data = result.groupBy { it[pk!!.column] }
+        println(data)
+
+        data.forEach { d ->
             run {
+                val id = d.key
+                val value = d.value
+                val row = value[0]
                 val ins = clz.getDeclaredConstructor().newInstance()
-                var next = true
                 simpleCols.forEach { sc ->
                     run {
-                        val columnValue = r[sc.column!!]
-                        if (sc.id!!) {
-                            if (ids.contains(columnValue)) {
-                                next = false
-                            } else {
-                                if (columnValue != null) {
-                                    ids += columnValue
+                        val columnValue = row[sc.column!!]
+                        val targetField = fields.find { it.name == sc.field }
+                        targetField?.let {
+                            targetField.trySetAccessible()
+                            when (targetField.type) {
+                                String::class.java -> {
+                                    targetField.set(ins, columnValue.toString())
                                 }
-                            }
-                        }
-                        if (next) {
-                            val targetField = fields.find { it.name == sc.field }
-                            targetField?.let {
-                                targetField.trySetAccessible()
-                                when (targetField.type) {
-                                    String::class.java -> {
-                                        targetField.set(ins, columnValue.toString())
-                                    }
 
-                                    else -> {
-                                        targetField.set(ins, columnValue)
-                                    }
+                                else -> {
+                                    targetField.set(ins, columnValue)
                                 }
                             }
                         }
 
                     }
                 }
-                if (next) {
-                    insList += ins
+                insList += ins
 
+                if (nonSimpleCols.isNotEmpty()) {
+                    // 非空才需要处理
 
-                }
-            }
-        }
-
-
-        val nonSimpleCols = cols.filter { !it.simple!! }
-
-        if (nonSimpleCols.isNotEmpty()) {
-            // 有非简单数据类型
-
-            nonSimpleCols.forEach { sc ->
-                run {
-
-                    val innerCols = sc.fields
-                    result.forEach { r ->
+                    nonSimpleCols.forEach { sc ->
                         run {
+                            val cols2 = sc.fields
+                            val nsInsList = mutableListOf<Any>()
+                            value.forEach { v ->
+                                val ins2 = sc.type!!.getDeclaredConstructor().newInstance()
+                                val fields2 = ReflectUtil.getFields(sc.type)
+                                run {
+                                    cols2!!.forEach { col2 ->
+                                        run {
+                                            val targetValue = v[col2.column]
+                                            val targetField2 = fields2.find { it.name == col2.field }
+                                            targetField2?.let {
+                                                targetField2.trySetAccessible()
+                                                when (targetField2.type) {
+                                                    String::class.java -> {
+                                                        targetField2.set(ins2, targetValue.toString())
+                                                    }
+                                                    Long::class.java->{
+                                                        targetField2.set(ins2,targetValue.toString().toLong())
+                                                    }
+                                                    else -> {
+                                                        targetField2.set(ins2, targetValue)
+                                                    }
+                                                }
+                                            }
+                                        }
 
-
+                                    }
+                                    nsInsList += ins2
+                                }
+                            }
+                            val  nonSimpleField =  fields.find { it.name == sc.column }
+                            nonSimpleField!!.trySetAccessible()
+                            nonSimpleField.set(ins,nsInsList)
                         }
                     }
-
                 }
             }
-
         }
-
-
-
-        println(insList)
     }
 
 
